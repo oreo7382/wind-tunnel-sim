@@ -34,6 +34,34 @@ Other features:
 | ![Supersonic airfoil with Mach waves](docs/images/supersonic.png) | ![3-D wing with tip vortices](docs/images/wing.png) |
 | ![Propeller slipstream](docs/images/propeller.png) | ![Spinning cylinder](docs/images/blunt.png) |
 
+## Supported flow regimes
+
+Each model works in the regimes below. The *Flow model* setting (Auto, Incompressible, Compressible)
+picks the regime automatically from the Mach number, or you can force incompressible flow to compare.
+
+**Mach-number regimes**
+
+| Model | Incompressible<br>M < 0.3 | Subsonic compressible<br>0.3 ≤ M < M<sub>cr</sub> | Transonic<br>M<sub>cr</sub> ≤ M < 1 | Supersonic<br>M > 1 |
+|---|---|---|---|---|
+| **2D airfoil** | ✅ Panel method | ✅ Prandtl-Glauert, Kármán-Tsien or Laitone | ⚠️ Corrections + Lock wave drag (estimate); evaluated at M = 0.95 for 0.95–1.0 | ✅ Busemann 2nd-order theory with Mach waves (best for thin, sharp-nosed sections; evaluated at M = 1.08 for 1.0–1.08) |
+| **3D wing** | ✅ Vortex lattice | ✅ Prandtl-Glauert / Göthert rule | ⚠️ Lock wave drag with sweep correction; capped at M = 0.95 | ❌ Not supported |
+| **Propeller** | ✅ Blade-element momentum theory | ✅ Section lift corrected for each blade element's Mach number | ⚠️ Warning above tip Mach 0.85; correction capped at M = 0.9; no wave drag | ❌ Not supported (supersonic tips are shown in the blade-section view only) |
+| **Blunt bodies (2D)** | ✅ Panel method + measured drag | ✅ Pressure-field corrections + measured drag rise | ⚠️ Field shown at M = 0.95; measured drag trend | ⚠️ Measured drag trend only (the bow shock is not modelled) |
+| **Sphere (3D)** | ✅ Exact potential flow + Morrison drag correlation | ✅ Pressure-field corrections + measured drag rise | ⚠️ As for 2D bodies | ⚠️ As for 2D bodies |
+
+✅ supported ⚠️ estimate (the app shows a warning) ❌ not available
+
+**Physical effects**
+
+| Effect | 2D airfoil | 3D wing | Propeller | Blunt bodies |
+|---|---|---|---|---|
+| Inviscid pressure field and streamlines | ✅ 2D | ✅ 3D lattice + 2D section view | ✅ Slipstream (actuator disk) + blade-section view | ✅ 2D, or axisymmetric for the sphere |
+| Viscous drag (boundary layer) | ✅ Thwaites / Head | ✅ Strip-wise from the 2D polar | ✅ From the 2D polar | ✅ Measured CD(Re) |
+| Laminar-turbulent transition | ✅ Free, forced, fully laminar or fully turbulent | ✅ From the section polar | ✅ From the section polar | ✅ Drag crisis near Re ≈ 3×10⁵ |
+| Separation and stall | ✅ Kirchhoff trailing-edge stall | ✅ Wing stall, spanwise location | ✅ Blade stall, post-stall polar | ✅ Separation angle (Thwaites) |
+| 3D effects | — | ✅ Induced drag, downwash, tip vortices, sweep, taper, twist, dihedral | ✅ Tip and hub losses (Prandtl) | ✅ Sphere vs cylinder |
+| Rotation | — | — | ✅ RPM, advance ratio, swirl | ✅ Spinning cylinder (Magnus effect) |
+
 ---
 
 ## Installation guide
@@ -197,16 +225,149 @@ the optional UIUC database). Delete that too if you like.
 
 ---
 
-## Physics and accuracy
+## Physics engine
 
-The models are fast engineering methods taught in aerodynamics courses: Hess-Smith panel method,
-Thwaites/Head boundary layers, compressibility rules, vortex-lattice method, blade-element momentum
-theory and empirical blunt-body data. They run instantly and are validated against exact solutions and
-published wind-tunnel data (see `tests/`). Typical accuracy is a few percent for lift and moment in
-attached flow, 10–20 % for drag, and roughly ±15 % for maximum lift. Transonic flow with shocks, deep
-stall and separated wakes are only estimated, and the app warns you when you are in those regimes.
-**This is a learning tool, not certified design software.** See [docs/THEORY.md](docs/THEORY.md) for the
-equations, assumptions and limits.
+The simulator uses fast engineering methods taught in aerodynamics courses. They don't solve the full
+Navier-Stokes equations (no CFD), so every result appears instantly. Below are the governing equations
+and corrections, with the Python file that implements each one. [docs/THEORY.md](docs/THEORY.md) gives the
+full derivations, assumptions and validation.
+
+### Atmosphere and free stream ([`atmosphere.py`](src/windtunnel/physics/atmosphere.py))
+
+International Standard Atmosphere (layered lapse rates), ideal gas, and Sutherland's viscosity law:
+
+```math
+p = \rho R T,\qquad a = \sqrt{\gamma R T},\qquad \mu = \frac{1.458\times10^{-6}\,T^{3/2}}{T + 110.4},\qquad
+M = \frac{V_\infty}{a},\qquad Re = \frac{V_\infty c}{\nu},\qquad q = \tfrac12 \rho V_\infty^2
+```
+
+### Inviscid flow: potential theory and the panel method ([`panel.py`](src/windtunnel/physics/panel.py))
+
+Incompressible, irrotational flow satisfies Laplace's equation. The Hess-Smith panel method represents
+the body with source panels plus a uniform vortex sheet, enforces zero normal velocity on every panel,
+and applies the Kutta condition (equal tangential speeds at the trailing edge):
+
+```math
+\nabla^2 \phi = 0,\qquad \mathbf V \cdot \hat{\mathbf n} = 0 \text{ on the surface},\qquad
+V_{t,\text{lower TE}} = -V_{t,\text{upper TE}}
+```
+
+```math
+C_p = 1 - \left(\frac{V}{V_\infty}\right)^2,\qquad L' = \rho_\infty V_\infty \Gamma \quad\text{(Kutta-Joukowski)}
+```
+
+### Boundary layer and viscous drag ([`boundary_layer.py`](src/windtunnel/physics/boundary_layer.py))
+
+All methods march the von Kármán momentum-integral equation along the surface:
+
+```math
+\frac{d\theta}{dx} + (2 + H)\frac{\theta}{u_e}\frac{du_e}{dx} = \frac{C_f}{2}
+```
+
+* **Laminar (Thwaites):** $\theta^2 = \dfrac{0.45\,\nu}{u_e^6}\displaystyle\int_0^x u_e^5\,dx$, with
+  $\lambda = \dfrac{\theta^2}{\nu}\dfrac{du_e}{dx}$. Laminar separation occurs when λ < −0.09.
+* **Transition (Michel):** $Re_\theta > 1.174\left(1 + \dfrac{22400}{Re_x}\right)Re_x^{0.46}$, or a
+  trip strip / laminar separation.
+* **Turbulent (Head's entrainment method + Ludwieg-Tillmann):**
+  $\dfrac{d}{dx}(u_e\theta H_1) = 0.0306\,u_e\,(H_1 - 3)^{-0.6169}$ and
+  $C_f = 0.246\cdot10^{-0.678H}\,Re_\theta^{-0.268}$. Separation is taken as H ≥ 2.0.
+* **Profile drag (Squire-Young):** $c_d = 2\,\theta_{TE}\left(\dfrac{u_{e,TE}}{V_\infty}\right)^{(H_{TE}+5)/2}$,
+  summed over both surfaces.
+* **Stall (Kirchhoff / Beddoes-Leishman):** $c_l = c_{l,\text{inviscid}}\left(\dfrac{1+\sqrt f}{2}\right)^2$,
+  where f is the separation point x/c, plus a small empirical boundary-layer "decambering" factor (≤ 7 %)
+  ([`airfoil2d.py`](src/windtunnel/physics/airfoil2d.py)).
+
+### Compressibility corrections ([`compressibility.py`](src/windtunnel/physics/compressibility.py))
+
+The incompressible pressure coefficient $C_{p,0}$ is corrected point by point, with
+$\beta = \sqrt{1-M_\infty^2}$:
+
+```math
+\text{Prandtl-Glauert: } C_p = \frac{C_{p,0}}{\beta}\qquad
+\text{Kármán-Tsien: } C_p = \frac{C_{p,0}}{\beta + \dfrac{M_\infty^2}{1+\beta}\dfrac{C_{p,0}}{2}}\qquad
+\text{Laitone: } C_p = \frac{C_{p,0}}{\beta + \dfrac{M_\infty^2\left(1+\frac{\gamma-1}{2}M_\infty^2\right)}{2\beta}C_{p,0}}
+```
+
+The critical Mach number is where the minimum corrected Cp reaches the sonic value:
+
+```math
+C_p^{*} = \frac{2}{\gamma M_\infty^2}\left[\left(\frac{2 + (\gamma-1)M_\infty^2}{\gamma+1}\right)^{\frac{\gamma}{\gamma-1}} - 1\right]
+```
+
+The probe's local state follows from isentropic relations with the free-stream total conditions
+(incompressible mode: ρ and T constant, and $V = V_\infty\sqrt{1-C_p}$):
+
+```math
+\frac{p_0}{p} = \left(1 + \frac{\gamma-1}{2}M^2\right)^{\frac{\gamma}{\gamma-1}},\qquad
+\frac{T_0}{T} = 1 + \frac{\gamma-1}{2}M^2,\qquad p = p_\infty + q_\infty C_p
+```
+
+* **Transonic wave drag (Lock's 4th-power law):** $c_{d,w} = 20\,(M_\infty - M_{cr})^4$, capped at 0.1.
+  Supersonic pockets are limited to local M ≤ 1.6.
+* **Compressible skin friction:** reduced by $(1 + 0.144M^2)^{-0.65}$.
+
+### Supersonic airfoils ([`flowfield.py`](src/windtunnel/physics/flowfield.py))
+
+Busemann's second-order thin-airfoil theory. δ is the local flow deflection, and disturbances travel
+along Mach lines at angle μ:
+
+```math
+C_p = \frac{2}{\beta}\,\delta + \frac{(\gamma+1)M_\infty^4 - 4\beta^2}{2\beta^4}\,\delta^2,\qquad
+\beta = \sqrt{M_\infty^2 - 1},\qquad \mu = \arcsin\frac{1}{M_\infty}
+```
+
+### 3D wings: vortex-lattice method ([`wing3d.py`](src/windtunnel/physics/wing3d.py))
+
+Horseshoe vortices (Biot-Savart law) satisfy the flow-tangency condition at each panel's ¾-chord control
+point. Compressibility uses the Göthert rule (geometry stretched by 1/β in x). Induced drag is computed
+in the Trefftz plane far behind the wing:
+
+```math
+d\mathbf V = \frac{\Gamma}{4\pi}\,\frac{d\mathbf l \times \mathbf r}{|\mathbf r|^3},\qquad
+(\mathbf V_\infty + \mathbf v_{\text{ind}})\cdot\hat{\mathbf n}_i = 0,\qquad x' = \frac{x}{\beta}
+```
+
+```math
+C_L = \frac{2}{V_\infty S}\sum_j \Gamma_j\,\Delta y_j,\qquad
+C_{D_i} = -\frac{1}{V_\infty^2 S}\sum_j \Gamma_j\, w_{T,j}\,\Delta s_j,\qquad
+e = \frac{C_L^2}{\pi\,AR\,C_{D_i}},\qquad \alpha_i = -\frac{w_T}{2V_\infty}
+```
+
+Each strip's lift is then iterated onto its 2D viscous polar at the effective angle
+$\alpha_{\text{eff}} = \alpha + \text{twist} - \alpha_i$, which gives wing stall and profile drag.
+
+### Propellers: blade-element momentum theory ([`propeller.py`](src/windtunnel/physics/propeller.py))
+
+Blade-element forces are balanced against momentum theory in each annulus, including Prandtl's tip and
+hub loss factor F. W is the relative speed at the blade and φ the inflow angle:
+
+```math
+dT = B\,\tfrac12\rho W^2 c\,(c_l\cos\phi - c_d\sin\phi)\,dr = 4\pi r\rho F\,V_a (V_a - V_\infty)\,dr
+```
+
+```math
+dQ = B\,\tfrac12\rho W^2 c\,(c_l\sin\phi + c_d\cos\phi)\,r\,dr,\qquad
+F = \frac{2}{\pi}\arccos\!\left[\exp\!\left(-\frac{B(R-r)}{2r\sin\phi}\right)\right]
+```
+
+```math
+J = \frac{V_\infty}{nD},\qquad C_T = \frac{T}{\rho n^2 D^4},\qquad C_P = \frac{P}{\rho n^3 D^5},\qquad
+\eta = \frac{T V_\infty}{P},\qquad T = 2\rho A (V_\infty + v_i)\,v_i \;\text{(actuator disk)}
+```
+
+### Blunt bodies ([`bluntbody.py`](src/windtunnel/physics/bluntbody.py))
+
+Potential flow gives the pressure field, for example $C_p = 1 - 4\sin^2\theta$ on a cylinder. A spinning
+cylinder carries circulation $\Gamma = 2\pi a^2\omega$, so $c_l = 2\pi\,\omega a / V_\infty$. Potential flow
+has zero drag (d'Alembert's paradox), so drag comes from measured data: the cylinder CD(Re) curve, the
+Morrison sphere correlation and Hoerner/White tables. Vortex shedding uses $f = St\,V_\infty / d$.
+
+### Accuracy
+
+The models are validated against exact solutions and published wind-tunnel data (see `tests/`).
+Typical accuracy is a few percent for lift and moment in attached flow, 10–20 % for drag, and roughly
+±15 % for maximum lift. Transonic shocks, deep stall and separated wakes are only estimated, and the app
+warns you when you are in those regimes. **This is a learning tool, not certified design software.**
 
 ---
 
