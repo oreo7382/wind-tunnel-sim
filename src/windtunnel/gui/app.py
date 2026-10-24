@@ -2,8 +2,9 @@
 from __future__ import annotations
 
 import sys
+from pathlib import Path
 
-from PySide6.QtGui import QAction, QKeySequence
+from PySide6.QtGui import QAction, QIcon, QKeySequence
 from PySide6.QtWidgets import QApplication, QFileDialog, QMainWindow, QMessageBox, QTabWidget
 
 from .. import __version__
@@ -80,9 +81,17 @@ class MainWindow(QMainWindow):
             fig.savefig(path, dpi=200)
 
 
+ICON = Path(__file__).resolve().parent.parent / "assets" / "windtunnel.png"
+
+
 def main(argv=None):
+    if sys.platform == "win32":
+        # give the app its own taskbar entry and icon instead of Python's
+        import ctypes
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("windtunnel.sim")
     app = QApplication(sys.argv if argv is None else argv)
     app.setApplicationName("Virtual Wind Tunnel")
+    app.setWindowIcon(QIcon(str(ICON)))
     win = MainWindow()
     win.show()
     return app.exec()

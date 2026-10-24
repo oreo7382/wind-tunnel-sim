@@ -110,6 +110,19 @@ not change anything else on your computer, and then installs numpy, matplotlib a
 
 The first start can take a few seconds while the libraries load.
 
+### Step 5 (optional): Make a desktop icon
+
+Create a **"Virtual Wind Tunnel"** icon that you can double-click to open the simulator directly:
+
+| System | What to do | What you get |
+|---|---|---|
+| **Windows** | Double-click **`scripts/create_shortcut_windows.bat`** | A desktop shortcut and a Start menu entry (right-click it to *Pin to taskbar*) |
+| **macOS** | `bash scripts/create_shortcut_mac_linux.sh` | `Virtual Wind Tunnel.app` on the desktop and in your *Applications* folder |
+| **Linux** | `bash scripts/create_shortcut_mac_linux.sh` | A desktop launcher and an entry in your applications menu. If the desktop shows a text file, right-click it and choose *Allow Launching*. |
+
+The icon points to this project folder, so create it again if you move the folder. Add `--no-menu`
+to create only the desktop icon.
+
 <details>
 <summary><b>Manual installation (if you prefer typing the commands yourself)</b></summary>
 
@@ -144,9 +157,9 @@ Download the new ZIP (or run `git pull`), then run the install script again.
 
 ### Uninstalling
 
-Delete the project folder. The only other thing the simulator creates is a small `.windtunnel-sim`
-folder in your home directory (imported airfoils and the optional UIUC database). Delete that too if
-you like.
+Delete the project folder, plus the desktop icon and menu entry if you made them. The only other thing
+the simulator creates is a small `.windtunnel-sim` folder in your home directory (imported airfoils and
+the optional UIUC database). Delete that too if you like.
 
 ---
 
@@ -216,7 +229,7 @@ equations, assumptions and limits.
 
 ```bash
 pip install -e ".[test]"
-pytest                       # 37 tests: physics validation + an off-screen GUI smoke test
+pytest                       # physics validation, shortcut maker and an off-screen GUI smoke test
 ```
 
 ```
@@ -233,6 +246,8 @@ src/windtunnel/
     propeller.py      blade-element momentum theory + actuator-disk slipstream
     bluntbody.py      blunt-body models
   gui/              PySide6 + matplotlib user interface
+  shortcut.py       desktop shortcut / app-menu entry for Windows, macOS and Linux
+  assets/           app icon
 tests/              pytest suite
 scripts/            one-click install / run scripts
 ```

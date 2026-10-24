@@ -70,3 +70,10 @@ jobs:
       - name: Check the app imports from the installed environment (macOS / Linux)
         if: runner.os != 'Windows'
         run: .venv/bin/python -c "import windtunnel.gui.app; print('ok')"
+      - name: Create a desktop shortcut (Windows)
+        if: runner.os == 'Windows'
+        shell: cmd
+        run: scripts\create_shortcut_windows.bat --no-menu --desktop "%RUNNER_TEMP%" && dir "%RUNNER_TEMP%\Virtual Wind Tunnel.lnk"
+      - name: Create a desktop shortcut (macOS / Linux)
+        if: runner.os != 'Windows'
+        run: bash scripts/create_shortcut_mac_linux.sh --no-menu --desktop "$RUNNER_TEMP" && ls -la "$RUNNER_TEMP"
