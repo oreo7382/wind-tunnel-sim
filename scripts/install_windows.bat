@@ -42,6 +42,7 @@ if errorlevel 1 goto :fail
 echo.
 echo  Installation finished.
 echo  Start the simulator by double-clicking scripts\run_windows.bat
+echo  or make a desktop icon with scripts\create_shortcut_windows.bat
 echo.
 if not defined WINDTUNNEL_SKIP_LAUNCH pause
 exit /b 0

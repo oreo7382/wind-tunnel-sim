@@ -33,5 +33,8 @@ windtunnel = "windtunnel.gui.app:main"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+windtunnel = ["assets/*.png", "assets/*.ico"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]

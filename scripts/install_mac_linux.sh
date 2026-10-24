@@ -37,6 +37,8 @@ echo "Installing the simulator and its libraries (this can take a few minutes) .
 echo
 echo "Installation finished. Start the simulator with:"
 echo "    bash scripts/run_mac_linux.sh"
+echo "or make a desktop icon with:"
+echo "    bash scripts/create_shortcut_mac_linux.sh"
 if [ "$(uname)" = "Linux" ]; then
     echo
     echo "If the window does not open on Linux, install the Qt system libraries:"

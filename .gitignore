@@ -8,4 +8,5 @@ dist/
 .pytest_cache/
 *.png
 !docs/images/*.png
+!src/windtunnel/assets/*.png
 prof.out
