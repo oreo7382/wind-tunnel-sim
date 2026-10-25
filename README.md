@@ -5,6 +5,12 @@ Change any setting and watch the streamlines, pressures and forces update. Drag 
 streamline from the free stream up to the wing and see exactly how the speed, pressure, Mach number,
 temperature and density change on the way.
 
+### ▶ [Try it in your browser: oreo7382.github.io/wind-tunnel-sim](https://oreo7382.github.io/wind-tunnel-sim/)
+
+No installation needed. The browser version has the 2D airfoil, 3D wing and propeller tabs with the
+draggable probe, and runs the same Python physics inside your browser. For the blunt-body tab, the UIUC
+airfoil database and the fastest performance, [install the desktop app](#installation-guide).
+
 ![2-D airfoil with streamlines and the flow probe](docs/images/airfoil.png)
 
 ## What it can do
@@ -65,6 +71,9 @@ picks the regime automatically from the Mach number, or you can force incompress
 ---
 
 ## Installation guide
+
+> **Just want to try it?** Open the [browser version](https://oreo7382.github.io/wind-tunnel-sim/).
+> Nothing to install. The first visit downloads about 15 MB and takes 10–20 seconds to start.
 
 You need **Python 3.10 or newer** (3.12, 3.13 and 3.14 are fine). Everything else is installed for you.
 Installation takes about 5 minutes and roughly 600 MB of disk space (mostly the Qt GUI library).
@@ -390,7 +399,14 @@ warns you when you are in those regimes. **This is a learning tool, not certifie
 
 ```bash
 pip install -e ".[test]"
-pytest                       # physics validation, shortcut maker and an off-screen GUI smoke test
+pytest                       # physics validation, web bridge, shortcut maker and an off-screen GUI smoke test
+```
+
+Build and preview the browser version locally:
+
+```bash
+python web/build_site.py                          # assembles _site/
+python -m http.server 8000 --directory _site      # then open http://localhost:8000
 ```
 
 ```
@@ -409,6 +425,8 @@ src/windtunnel/
   gui/              PySide6 + matplotlib user interface
   shortcut.py       desktop shortcut / app-menu entry for Windows, macOS and Linux
   assets/           app icon
+web/                browser version: HTML/JS interface; py/bridge.py runs the physics in Pyodide
+                    (Python compiled to WebAssembly) inside a web worker
 tests/              pytest suite
 scripts/            one-click install / run scripts
 ```
@@ -423,6 +441,9 @@ section = a2.Section(naca.from_code("2412"))
 result = a2.analyze(section, Freestream(isa(1000), 60.0), a2.Settings(alpha_deg=5, chord=1.2))
 print(result.cl, result.cd, result.lift_per_span)
 ```
+
+Every push to `main` also rebuilds the browser version and publishes it to GitHub Pages
+(`.github/workflows/pages.yml`).
 
 GitHub Actions installs the project on Windows, macOS and Linux with several Python versions and runs the
 tests, and also runs the one-click install scripts, on every push.

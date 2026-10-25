@@ -13,15 +13,39 @@ Every field exposes the same small interface used by the GUI:
 from __future__ import annotations
 
 import numpy as np
-from matplotlib.path import Path
 
 from . import compressibility as comp
 from .atmosphere import Freestream
 from .panel import PanelSolution
 
 
+def points_in_polygon(x, y, px, py):
+    """Even-odd (ray casting) test of points against a closed polygon, vectorised over points."""
+    x = np.asarray(x, dtype=float)
+    y = np.asarray(y, dtype=float)
+    xf, yf = x.ravel(), y.ravel()
+    inside = np.zeros(xf.shape, dtype=bool)
+    px, py = np.asarray(px, dtype=float), np.asarray(py, dtype=float)
+    # restrict the work to points inside the polygon's bounding box
+    box = (xf >= px.min()) & (xf <= px.max()) & (yf >= py.min()) & (yf <= py.max())
+    if not box.any():
+        return inside.reshape(x.shape)
+    bx, by = xf[box], yf[box]
+    hit = np.zeros(bx.shape, dtype=bool)
+    x1, y1 = px[:-1], py[:-1]
+    x2, y2 = px[1:], py[1:]
+    for i in range(len(x1)):
+        crosses = (y1[i] > by) != (y2[i] > by)
+        if crosses.any():
+            x_at = x1[i] + (by - y1[i]) * (x2[i] - x1[i]) / (y2[i] - y1[i] + 1e-300)
+            hit ^= crosses & (bx < x_at)
+    inside[box] = hit
+    return inside.reshape(x.shape)
+
+
 class FlowField:
     bounds = (-1.0, 2.0, -1.0, 1.0)
+    grid_shape = (260, 170)       # resolution of the cached velocity grid (smaller in the web app)
     outlines: list = []
     annotations: dict = {}
 
@@ -38,15 +62,9 @@ class FlowField:
         x = np.asarray(x, dtype=float)
         y = np.asarray(y, dtype=float)
         mask = np.zeros(x.shape, dtype=bool)
-        pts = np.column_stack([x.ravel(), y.ravel()])
-        for path in self._paths():
-            mask |= path.contains_points(pts).reshape(x.shape)
+        for ox, oy in self.outlines:
+            mask |= points_in_polygon(x, y, ox, oy)
         return mask
-
-    def _paths(self):
-        if not hasattr(self, "_path_cache"):
-            self._path_cache = [Path(np.column_stack(o)) for o in self.outlines]
-        return self._path_cache
 
     def seeds(self, n: int):
         x0, x1, y0, y1 = self.bounds
@@ -102,7 +120,8 @@ class PanelFlowField(FlowField):
         self._fast_grid()
 
     # --- fast velocity: bilinear interpolation of a cached basis grid, exact near the body
-    def _fast_grid(self, nx=260, ny=170):
+    def _fast_grid(self):
+        nx, ny = self.grid_shape
         key = (id(self.panel), self.bounds, nx, ny)
         if key not in self._grid_cache:
             x0, x1, y0, y1 = self.bounds

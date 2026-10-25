@@ -10,3 +10,4 @@ dist/
 !docs/images/*.png
 !src/windtunnel/assets/*.png
 prof.out
+_site/
